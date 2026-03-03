@@ -7,142 +7,194 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.19.1
 #   kernelspec:
-#     display_name: Python (pixi)
+#     display_name: Python 3
 #     language: python
-#     name: cours_ia_cyber_laval_exploration
+#     name: python3
 # ---
 
 # %% [markdown]
-# # Compare machine learning models
+# # Explore the Midwest Survey dataset
 #
-# In this notebook, we will compare 3 pre-trained models that predict the
-# **Census Region** of a respondent based on their survey answers.
+# In this notebook, we will explore the **Midwest Survey** dataset from
+# [skrub](https://skrub-data.org/).
 #
-# The 3 models are:
-# - **Logistic Regression**: a simple linear model
-# - **Random Forest**: a model based on many decision trees
-# - **Gradient Boosting**: a model that builds trees sequentially
+# This dataset contains survey responses from people across the United States,
+# asking them about their perception of the Midwest region.
+#
+# The goal is to predict the **Census Region** where a respondent lives,
+# based on their survey answers.
 
 # %% [markdown]
 # ## Load the dataset
 
 # %%
 from skrub.datasets import fetch_midwest_survey
+from skrub import TableReport
+import matplotlib.pyplot as plt
+
+plt.style.use("seaborn-v0_8-whitegrid")
 
 dataset = fetch_midwest_survey()
+
+# X contains the features (the survey answers)
 X = dataset.X
+# y contains the target (the Census Region)
 y = dataset.y
 
-# %%
-# To simplify evaluation, we will group categories in the target to deal with a binary classification problem instead of a multiclass one.
-y = y.apply(lambda x: "North Central" if x in ["East North Central", "West North Central"] else "other")
+# %% [markdown]
+# ## Question 1: How many examples are there in the dataset?
+#
+# Use the `.shape` attribute to find out the number of rows and columns.
 
 # %%
-sample_idx = X.sample(n=1000, random_state=1).index
-X_train = X.loc[sample_idx].reset_index(drop=True)
-y_train = y.loc[sample_idx].reset_index(drop=True)
-X_test = X.drop(sample_idx).reset_index(drop=True)
-y_test = y.drop(sample_idx).reset_index(drop=True)
+# Display the number of rows and columns
+n_rows, n_cols = X.shape
+print("Number of examples (rows):", n_rows)
+print("Number of features (columns):", n_cols)
+
+# You can also look at the first few rows of the dataset
+X.head()
 
 # %% [markdown]
-# ## Load the 3 models
+# ## Question 2: What is the distribution of the target?
 #
-# The models were saved as `.pkl` files. We use `joblib` to load them.
+# The target variable `y` tells us the Census Region of each respondent.
+# Let's see how many respondents belong to each region.
 
 # %%
-import joblib
-from midwest_survey_models.transformers import NumericalStabilizer
+# Count how many respondents belong to each region
+y_counts = y.value_counts()
+print(y_counts)
 
-model_lr = joblib.load("../model_logistic_regression.pkl")
-model_rf = joblib.load("../model_random_forest.pkl")
-model_gb = joblib.load("../model_gradient_boosting.pkl")
+# %%
+# Visualize the target distribution with a bar plot (horizontal)
+ax = y_counts.sort_values().plot(
+    kind="barh", figsize=(8, 4)
+)
+ax.set_xlabel("Number of respondents")
+ax.set_ylabel("Census Region")
+ax.set_title("Distribution of the target (Census Region)")
+plt.tight_layout()
+plt.show()
 
 # %% [markdown]
-# Let's inspect what each model looks like. They are **pipelines**: they
-# first transform the data, then make predictions.
-
-# %%
-model_lr
-
-# %%
-model_rf
-
-# %%
-model_gb
+# Is the target balanced (roughly the same number of examples per class)
+# or imbalanced?
 
 # %% [markdown]
-# ## Evaluate the models with cross-validation
+# ## Question 3: What are the features that can be used to predict the target?
 #
-# To fairly evaluate each model, we use **cross-validation**.
-# This means we train and test the model on different parts of the data multiple times, so we can see how well it generalizes.
-#
-# We use `cross_val_score` to get the score for every fold in cross-validation.
+# Let's look at the column names and their data types.
 
 # %%
-from sklearn.model_selection import cross_val_score
+# List all column names
+print("Feature columns:")
+print(X.columns.tolist())
 
-cv_lr = cross_val_score(model_lr, X, y, cv=5)
-cv_rf = cross_val_score(model_rf, X, y, cv=5)
-cv_gb = cross_val_score(model_gb, X, y, cv=5)
+# %%
+# Show data types for each column
+print("\nData types:")
+print(X.dtypes)
+
+# %%
+# How many features are numerical? How many are categorical (text)?
+n_numeric = (X.dtypes != "object").sum()
+n_categ = (X.dtypes == "object").sum()
+print(f"\nNumber of numerical features: {n_numeric}")
+print(f"Number of categorical (text) features: {n_categ}")
+
+# %%
+# Quick automatic report
+TableReport(X)
 
 # %% [markdown]
-# ## Question 6: Among the three models, which one has the best recall?
+# ## Question 4: Are there any missing values in the dataset?
 #
-# The **classification report** shows precision, recall, and f1-score for each class.
-#
-# - **Precision**: among all predictions for a class, how many were correct?
-# - **Recall**: among all real examples of a class, how many were found?
-# - **F1-score**: a balance between precision and recall
-#
-# We will define the positive class as "North Central".
+# Missing values can cause problems for machine learning models.
+# Let's check if there are any.
 
 # %%
-y_pred_lr = model_lr.predict(X_test)
+# Check for NaN missing values
+na_counts = X.isna().sum()
+print("Number of NaN per column:")
+print(na_counts)
 
-# %%
-from skore import EstimatorReport
-report = EstimatorReport(estimator = model_lr,
-                X_test = X_test,
-                y_test = y_test)
-report.help()
-
-# %%
-report.metrics.summarize(pos_label="North Central").frame()
+print("\nTotal number of NaN:", int(na_counts.sum()))
 
 # %% [markdown]
-# Which model has the highest recall?
-
-# %% [markdown]
-# ## Question 7: Which model has the best practical application?
-#
-# Let's say that it costs 10 to make a false positive error, while it costs 1 to make a false negative error. Correctly predicting a positive example gains 5, while correctly predicting a negative example gains 2.
+# Missing values can sometimes be encoded differently. Let's look at some
+# columns more closely.
 
 # %%
-
-# %% [markdown]
-# Which model makes the most meaningful predictions in practice?
-
-# %% [markdown]
-# ## Question 8: Which model generalizes the best?
-#
-# To understand generalization, we compare the **training score** (how well the model fits the data it was trained on) with the **test score** (how well it performs on unseen data).
-#
-# A big gap between the two means the model is **overfitting**.  
-#
-# We don't want to do this only once, but several times. Use cross-validation for that. You can either use cross-validation from scikit-learn, or the CrossValidationReport from skore.
+# Look at unique values for the Household_Income column
+print("Unique values in Household_Income:")
+print(X["Household_Income"].unique())
 
 # %%
+# Look at unique values for the Education column
+print("\nUnique values in Education:")
+print(X["Education"].unique())
 
 # %% [markdown]
-# Which model has the smallest gap between train and test accuracy?
-# That model generalizes the best.
+# Do you see a special value that could represent missing data?
+
+# %% [markdown]
+# ## Question 5: What is the most common answer to
+# "How much do you personally identify as a Midwesterner"?
 #
-# Which model has the largest gap? That model is likely **overfitting**.
+# Let's explore this important feature.
 
 # %%
-# TODO: Based on the results above, which model would you choose
-# for a real application? Write your answer as a comment below.
+# display the value counts for the column
+col_midwest = "How_much_do_you_personally_identify_as_a_Midwesterner"
+midwest_counts = X[col_midwest].value_counts()
+print(midwest_counts)
 
-# My choice: ...
-# Reason: ...
+# Most common answer
+most_common_midwest = midwest_counts.idxmax()
+print(
+    '\nMost common answer to '
+    '"How much do you personally identify as a Midwesterner":',
+    most_common_midwest,
+)
 
+# %%
+# make a bar plot of the results
+ax = midwest_counts.sort_values().plot(
+    kind="barh", figsize=(8, 4)
+)
+ax.set_xlabel("Number of respondents")
+ax.set_ylabel(col_midwest)
+ax.set_title("Distribution of identification as a Midwesterner")
+plt.tight_layout()
+plt.show()
+
+# %% [markdown]
+# ## Bonus: Explore another feature
+#
+# Pick another column and explore its distribution.
+# For example: `Gender`, `Age`, or one of the
+# "Do you consider X state as part of the Midwest" columns.
+
+# %%
+# Example: explore the Gender column
+col = "Gender"
+print(f"Distribution for {col}:")
+gender_counts = X[col].value_counts()
+print(gender_counts)
+
+ax = gender_counts.sort_values().plot(
+    kind="barh", figsize=(6, 4)
+)
+ax.set_xlabel("Number of respondents")
+ax.set_ylabel(col)
+ax.set_title(f"Distribution of {col}")
+plt.tight_layout()
+plt.show()
+print(y.value_counts())
+print(n_numeric, n_categ)
+print("Total NaN:", int(X.isna().sum().sum()))
+X[col].value_counts()
+print(X["How_much_do_you_personally_identify_as_a_Midwesterner"].value_counts())
+print(n_numeric, n_categ)
+print("Total NaN:", int(X.isna().sum().sum()))
